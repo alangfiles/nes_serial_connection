@@ -99,6 +99,28 @@ static unsigned char slave_receive(unsigned char timeout)
 	return 0;
 }
 
+/* Debug line at the top of the screen, rewritten by the NMI every frame:
+ * "P1:xx P2:xx" = the two controller bytes in hex (P1 = master, P2 = slave). */
+unsigned char dbg_buf[] = {
+	NT_UPD_HORZ | 0x23, 0x6A, 11, /* row 27, column 10: bottom, centered */
+	'P', '1', ':', '0', '0', ' ', 'P', '2', ':', '0', '0',
+	NT_UPD_EOF
+};
+
+static unsigned char hex_digit(unsigned char v)
+{
+	v &= 0x0F;
+	return v < 10 ? '0' + v : 'A' - 10 + v;
+}
+
+static void show_pads(unsigned char p1, unsigned char p2)
+{
+	dbg_buf[6] = hex_digit(p1 >> 4);
+	dbg_buf[7] = hex_digit(p1);
+	dbg_buf[12] = hex_digit(p2 >> 4);
+	dbg_buf[13] = hex_digit(p2);
+}
+
 static void draw_role(void)
 {
 	ppu_off();
@@ -122,6 +144,7 @@ void main(void)
 	vram_adr(NTADR_A(6, 4));
 	vram_write(wait_text, sizeof(wait_text) - 1);
 	ppu_on_all();
+	set_vram_update(dbg_buf);
 
 	/*
 	 * Startup handshake (like the Game Boy link tutorial): both consoles are
@@ -199,6 +222,11 @@ void main(void)
 			move_dot(&local_x, &local_y, pad);
 			move_dot(&remote_x, &remote_y, received_pad);
 		}
+
+		if (is_master)
+			show_pads(pad, received_pad);
+		else
+			show_pads(received_pad, pad);
 
 		oam_clear();
 		if (is_master) {

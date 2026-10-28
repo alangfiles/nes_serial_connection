@@ -21,6 +21,7 @@
 	.import		_oam_meta_spr
 	.import		_pad_poll
 	.import		_bank_spr
+	.import		_set_vram_update
 	.import		_vram_adr
 	.import		_vram_write
 	.import		_link_send
@@ -56,6 +57,7 @@
 	.export		_slave_text
 	.export		_palette_bg
 	.export		_palette_sp
+	.export		_dbg_buf
 	.export		_main
 
 .segment	"DATA"
@@ -68,6 +70,22 @@ _remote_x:
 	.byte	$B0
 _remote_y:
 	.byte	$70
+_dbg_buf:
+	.byte	$63
+	.byte	$6A
+	.byte	$0B
+	.byte	$50
+	.byte	$31
+	.byte	$3A
+	.byte	$30
+	.byte	$30
+	.byte	$20
+	.byte	$50
+	.byte	$32
+	.byte	$3A
+	.byte	$30
+	.byte	$30
+	.byte	$FF
 
 .segment	"RODATA"
 
@@ -209,7 +227,7 @@ _rx2:
 	ldy     #$00
 	lda     (sp),y
 	and     #$02
-	beq     L0157
+	beq     L018C
 	ldy     #$04
 	lda     (sp),y
 	sta     ptr1+1
@@ -219,7 +237,7 @@ _rx2:
 	ldy     #$00
 	lda     (ptr1),y
 	cmp     #$09
-	bcc     L0157
+	bcc     L018C
 ;
 ; --*x;
 ;
@@ -237,9 +255,9 @@ _rx2:
 ;
 ; if ((pad & PAD_RIGHT) && *x < 224)
 ;
-L0157:	lda     (sp),y
+L018C:	lda     (sp),y
 	and     #$01
-	beq     L015C
+	beq     L0191
 	ldy     #$04
 	lda     (sp),y
 	sta     ptr1+1
@@ -249,7 +267,7 @@ L0157:	lda     (sp),y
 	ldy     #$00
 	lda     (ptr1),y
 	cmp     #$E0
-	bcs     L015C
+	bcs     L0191
 ;
 ; ++*x;
 ;
@@ -267,9 +285,9 @@ L0157:	lda     (sp),y
 ;
 ; if ((pad & PAD_UP) && *y > 24)
 ;
-L015C:	lda     (sp),y
+L0191:	lda     (sp),y
 	and     #$08
-	beq     L0161
+	beq     L0196
 	ldy     #$02
 	lda     (sp),y
 	sta     ptr1+1
@@ -279,7 +297,7 @@ L015C:	lda     (sp),y
 	dey
 	lda     (ptr1),y
 	cmp     #$19
-	bcc     L0161
+	bcc     L0196
 ;
 ; --*y;
 ;
@@ -297,7 +315,7 @@ L015C:	lda     (sp),y
 ;
 ; if ((pad & PAD_DOWN) && *y < 208)
 ;
-L0161:	lda     (sp),y
+L0196:	lda     (sp),y
 	and     #$04
 	beq     L005F
 	ldy     #$02
@@ -397,31 +415,31 @@ L005F:	jmp     incsp5
 ;
 ; }
 ;
-	beq     L0165
+	beq     L019A
 	cmp     #$01
-	beq     L0166
+	beq     L019B
 	cmp     #$02
-	beq     L0167
-	jmp     L0168
+	beq     L019C
+	jmp     L019D
 ;
 ; case 0: return local_x;
 ;
-L0165:	lda     _local_x
+L019A:	lda     _local_x
 	jmp     incsp1
 ;
 ; case 1: return local_y;
 ;
-L0166:	lda     _local_y
+L019B:	lda     _local_y
 	jmp     incsp1
 ;
 ; case 2: return remote_x;
 ;
-L0167:	lda     _remote_x
+L019C:	lda     _remote_x
 	jmp     incsp1
 ;
 ; default: return remote_y;
 ;
-L0168:	lda     _remote_y
+L019D:	lda     _remote_y
 ;
 ; }
 ;
@@ -576,6 +594,105 @@ L0098:	jsr     _link_nmi_on
 .endproc
 
 ; ---------------------------------------------------------------
+; unsigned char __near__ hex_digit (unsigned char)
+; ---------------------------------------------------------------
+
+.segment	"CODE"
+
+.proc	_hex_digit: near
+
+.segment	"CODE"
+
+;
+; {
+;
+	jsr     pusha
+;
+; v &= 0x0F;
+;
+	ldy     #$00
+	lda     (sp),y
+	and     #$0F
+	sta     (sp),y
+;
+; return v < 10 ? '0' + v : 'A' - 10 + v;
+;
+	cmp     #$0A
+	bcs     L019F
+	ldx     #$00
+	lda     (sp),y
+	clc
+	adc     #$30
+	jmp     incsp1
+L019F:	lda     (sp),y
+	clc
+	adc     #$37
+	ldx     #$00
+;
+; }
+;
+	jmp     incsp1
+
+.endproc
+
+; ---------------------------------------------------------------
+; void __near__ show_pads (unsigned char, unsigned char)
+; ---------------------------------------------------------------
+
+.segment	"CODE"
+
+.proc	_show_pads: near
+
+.segment	"CODE"
+
+;
+; {
+;
+	jsr     pusha
+;
+; dbg_buf[6] = hex_digit(p1 >> 4);
+;
+	ldy     #$01
+	lda     (sp),y
+	lsr     a
+	lsr     a
+	lsr     a
+	lsr     a
+	jsr     _hex_digit
+	sta     _dbg_buf+6
+;
+; dbg_buf[7] = hex_digit(p1);
+;
+	ldy     #$01
+	lda     (sp),y
+	jsr     _hex_digit
+	sta     _dbg_buf+7
+;
+; dbg_buf[12] = hex_digit(p2 >> 4);
+;
+	ldy     #$00
+	lda     (sp),y
+	lsr     a
+	lsr     a
+	lsr     a
+	lsr     a
+	jsr     _hex_digit
+	sta     _dbg_buf+12
+;
+; dbg_buf[13] = hex_digit(p2);
+;
+	ldy     #$00
+	lda     (sp),y
+	jsr     _hex_digit
+	sta     _dbg_buf+13
+;
+; }
+;
+	jmp     incsp2
+
+.endproc
+
+; ---------------------------------------------------------------
 ; void __near__ draw_role (void)
 ; ---------------------------------------------------------------
 
@@ -599,7 +716,7 @@ L0098:	jsr     _link_nmi_on
 ; if (is_master)
 ;
 	lda     _is_master
-	beq     L00AB
+	beq     L00D5
 ;
 ; vram_write(master_text, sizeof(master_text) - 1);
 ;
@@ -608,13 +725,13 @@ L0098:	jsr     _link_nmi_on
 ;
 ; else
 ;
-	jmp     L016C
+	jmp     L01A4
 ;
 ; vram_write(slave_text, sizeof(slave_text) - 1);
 ;
-L00AB:	lda     #<(_slave_text)
+L00D5:	lda     #<(_slave_text)
 	ldx     #>(_slave_text)
-L016C:	jsr     pushax
+L01A4:	jsr     pushax
 	ldx     #$00
 	lda     #$16
 	jsr     _vram_write
@@ -691,10 +808,16 @@ L016C:	jsr     pushax
 ;
 	jsr     _ppu_on_all
 ;
+; set_vram_update(dbg_buf);
+;
+	lda     #<(_dbg_buf)
+	ldx     #>(_dbg_buf)
+	jsr     _set_vram_update
+;
 ; if (!decided) {
 ;
-L00D6:	lda     _decided
-	bne     L00F1
+L0102:	lda     _decided
+	bne     L011D
 ;
 ; pad = pad_poll(0);
 ;
@@ -709,7 +832,7 @@ L00D6:	lda     _decided
 ;
 	lda     _pad
 	and     #$10
-	beq     L00E0
+	beq     L010C
 ;
 ; is_master = 1;
 ;
@@ -726,11 +849,11 @@ L00D6:	lda     _decided
 ;
 ; } else if (slave_receive(8)) {
 ;
-	jmp     L00F1
-L00E0:	lda     #$08
+	jmp     L011D
+L010C:	lda     #$08
 	jsr     _slave_receive
 	tax
-	beq     L00D6
+	beq     L0102
 ;
 ; is_master = 0;
 ;
@@ -748,8 +871,8 @@ L00E0:	lda     #$08
 ;
 ; if (is_master) {
 ;
-L00F1:	lda     _is_master
-	beq     L00F2
+L011D:	lda     _is_master
+	beq     L011E
 ;
 ; ppu_wait_nmi();
 ;
@@ -814,7 +937,7 @@ L00F1:	lda     _is_master
 ;
 	ldx     _rx0+1
 	cpx     #$01
-	bcs     L010A
+	bcs     L0136
 ;
 ; remote_pad = (unsigned char)rx0;
 ;
@@ -828,7 +951,7 @@ L00F1:	lda     _is_master
 ;
 ; ++frame;
 ;
-L010A:	inc     _frame
+L0136:	inc     _frame
 ;
 ; received_pad = remote_pad;
 ;
@@ -847,17 +970,17 @@ L010A:	inc     _frame
 ;
 ; } else {
 ;
-	jmp     L0117
+	jmp     L0143
 ;
 ; if (!have_packet && !slave_receive(8))
 ;
-L00F2:	lda     _have_packet
-	bne     L011A
+L011E:	lda     _have_packet
+	bne     L0146
 	lda     #$08
 	jsr     _slave_receive
 	tax
-	jeq     L00D6
-L011A:	lda     #$00
+	jeq     L0102
+L0146:	lda     #$00
 ;
 ; have_packet = 0;
 ;
@@ -893,8 +1016,8 @@ L011A:	lda     #$00
 ;
 ; if (linked) {
 ;
-L0117:	lda     _linked
-	beq     L0128
+L0143:	lda     _linked
+	beq     L0154
 ;
 ; move_dot(&local_x, &local_y, pad);
 ;
@@ -932,14 +1055,36 @@ L0117:	lda     _linked
 	lda     _received_pad
 	jsr     _move_dot
 ;
+; if (is_master)
+;
+L0154:	lda     _is_master
+	beq     L015E
+;
+; show_pads(pad, received_pad);
+;
+	lda     _pad
+	jsr     pusha
+	lda     _received_pad
+;
+; else
+;
+	jmp     L01A5
+;
+; show_pads(received_pad, pad);
+;
+L015E:	lda     _received_pad
+	jsr     pusha
+	lda     _pad
+L01A5:	jsr     _show_pads
+;
 ; oam_clear();
 ;
-L0128:	jsr     _oam_clear
+	jsr     _oam_clear
 ;
 ; if (is_master) {
 ;
 	lda     _is_master
-	beq     L0133
+	beq     L0168
 ;
 ; oam_meta_spr(local_x, local_y, YellowSpr);
 ;
@@ -974,11 +1119,11 @@ L0128:	jsr     _oam_clear
 ;
 ; } else {
 ;
-	jmp     L00D6
+	jmp     L0102
 ;
 ; oam_meta_spr(remote_x, remote_y, YellowSpr);
 ;
-L0133:	jsr     decsp2
+L0168:	jsr     decsp2
 	lda     _remote_x
 	ldy     #$01
 	sta     (sp),y
@@ -1023,7 +1168,7 @@ L0133:	jsr     decsp2
 ; if (!drawn_role) {
 ;
 	lda     _drawn_role
-	jne     L00D6
+	jne     L0102
 ;
 ; drawn_role = 1;
 ;
@@ -1036,7 +1181,7 @@ L0133:	jsr     decsp2
 ;
 ; while (1) {
 ;
-	jmp     L00D6
+	jmp     L0102
 
 .endproc
 
