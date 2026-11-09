@@ -54,11 +54,15 @@ static void move_dot(unsigned char *x, unsigned char *y, unsigned char pad)
 		++*y;
 }
 
-/* 6-bit check over the pad and sync bytes (the byte values are all valid). */
-static unsigned char check6(unsigned char a, unsigned char b)
+/* 6-bit check over pad, sync value and sync index (all byte values valid). */
+static unsigned char check6(unsigned char a, unsigned char b, unsigned char idx)
 {
-	unsigned char t = a ^ b ^ 0x5A;
-	return (t ^ (t >> 6)) & 0x3F;
+	unsigned char t = a ^ 0x5A;
+	t = (unsigned char)((t << 1) | (t >> 7)) ^ b;
+	t = (unsigned char)((t << 1) | (t >> 7)) ^ (unsigned char)(idx * 0x55 + 0x21);
+	t ^= t >> 3;
+	t ^= t >> 6;
+	return t & 0x3F;
 }
 
 static unsigned char sync_get(unsigned char idx)
@@ -87,12 +91,18 @@ static void sync_set_slave(unsigned char idx, unsigned char v)
  * value) and rx2 (tag) are good. NMI is off if it returns 1, on if it returns 0. */
 static unsigned char slave_receive(unsigned char timeout)
 {
+	/* Let this console's own vblank NMI (sprite upload) run first, then listen
+	 * with NMI off so it can't land on a start bit. The master delays its
+	 * transaction until after the slave's NMI is done. */
+	ppu_wait_nmi();
+	link_nmi_off();
 	rx0 = link_receive(timeout);
 	if (rx0 <= 255) {
 		rx1 = link_receive(1);
 		rx2 = link_receive(1);
 		if (rx1 <= 255 && rx2 <= 255 &&
-		    (rx2 & 0x3F) == check6((unsigned char)rx0, (unsigned char)rx1))
+		    (rx2 & 0x3F) == check6((unsigned char)rx0, (unsigned char)rx1,
+			   (unsigned char)rx2 >> 6))
 			return 1;
 	}
 	link_nmi_on();
@@ -164,7 +174,8 @@ void main(void)
 	 * of vblank) and turned back on afterwards, so a vblank that happened
 	 * during it still triggers the sprite upload. The master waits for its own
 	 * vblank before each transaction. The slave never waits for vblank: it
-	 * listens with NMI on, so its own vblank can run normally in the idle gap.
+	 * waits for its own NMI, then listens with NMI off so NMI cannot hit a
+	 * start bit. The master delays a few ms after vblank to allow for this.
 	 *
 	 * pad_poll() strobes OUT0, the serial output line, and leaves it low, so
 	 * link_idle() restores the high idle level. Each console polls only while
@@ -188,11 +199,14 @@ void main(void)
 		}
 
 		if (is_master) {
+			unsigned int d;
 			ppu_wait_nmi();
 			link_nmi_off();
+			for (d = 0; d < 120; ++d)
+				; /* ~3+ ms: let the slave finish its NMI and start listening */
 			sync_idx = frame & 3;
 			sync_val = sync_get(sync_idx);
-			sync_tag = (sync_idx << 6) | check6(pad, sync_val);
+			sync_tag = (sync_idx << 6) | check6(pad, sync_val, sync_idx);
 			link_send(pad);
 			link_send(sync_val);
 			link_send(sync_tag);

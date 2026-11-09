@@ -227,7 +227,7 @@ _rx2:
 	ldy     #$00
 	lda     (sp),y
 	and     #$02
-	beq     L018C
+	beq     L01A7
 	ldy     #$04
 	lda     (sp),y
 	sta     ptr1+1
@@ -237,7 +237,7 @@ _rx2:
 	ldy     #$00
 	lda     (ptr1),y
 	cmp     #$09
-	bcc     L018C
+	bcc     L01A7
 ;
 ; --*x;
 ;
@@ -255,9 +255,9 @@ _rx2:
 ;
 ; if ((pad & PAD_RIGHT) && *x < 224)
 ;
-L018C:	lda     (sp),y
+L01A7:	lda     (sp),y
 	and     #$01
-	beq     L0191
+	beq     L01AC
 	ldy     #$04
 	lda     (sp),y
 	sta     ptr1+1
@@ -267,7 +267,7 @@ L018C:	lda     (sp),y
 	ldy     #$00
 	lda     (ptr1),y
 	cmp     #$E0
-	bcs     L0191
+	bcs     L01AC
 ;
 ; ++*x;
 ;
@@ -285,9 +285,9 @@ L018C:	lda     (sp),y
 ;
 ; if ((pad & PAD_UP) && *y > 24)
 ;
-L0191:	lda     (sp),y
+L01AC:	lda     (sp),y
 	and     #$08
-	beq     L0196
+	beq     L01B1
 	ldy     #$02
 	lda     (sp),y
 	sta     ptr1+1
@@ -297,7 +297,7 @@ L0191:	lda     (sp),y
 	dey
 	lda     (ptr1),y
 	cmp     #$19
-	bcc     L0196
+	bcc     L01B1
 ;
 ; --*y;
 ;
@@ -315,7 +315,7 @@ L0191:	lda     (sp),y
 ;
 ; if ((pad & PAD_DOWN) && *y < 208)
 ;
-L0196:	lda     (sp),y
+L01B1:	lda     (sp),y
 	and     #$04
 	beq     L005F
 	ldy     #$02
@@ -350,7 +350,7 @@ L005F:	jmp     incsp5
 .endproc
 
 ; ---------------------------------------------------------------
-; unsigned char __near__ check6 (unsigned char, unsigned char)
+; unsigned char __near__ check6 (unsigned char, unsigned char, unsigned char)
 ; ---------------------------------------------------------------
 
 .segment	"CODE"
@@ -364,18 +364,19 @@ L005F:	jmp     incsp5
 ;
 	jsr     pusha
 ;
-; unsigned char t = a ^ b ^ 0x5A;
+; unsigned char t = a ^ 0x5A;
 ;
-	ldy     #$00
+	ldy     #$02
 	lda     (sp),y
-	iny
-	eor     (sp),y
 	eor     #$5A
 	jsr     pusha
 ;
-; return (t ^ (t >> 6)) & 0x3F;
+; t = (unsigned char)((t << 1) | (t >> 7)) ^ b;
 ;
 	ldy     #$00
+	lda     (sp),y
+	asl     a
+	sta     ptr1
 	lda     (sp),y
 	lsr     a
 	lsr     a
@@ -383,13 +384,67 @@ L005F:	jmp     incsp5
 	lsr     a
 	lsr     a
 	lsr     a
+	lsr     a
+	ora     ptr1
+	sta     ptr1
+	ldy     #$02
+	lda     (sp),y
+	eor     ptr1
+	ldy     #$00
+	sta     (sp),y
+;
+; t = (unsigned char)((t << 1) | (t >> 7)) ^ (unsigned char)(idx * 0x55 + 0x21);
+;
+	asl     a
+	sta     ptr1
+	lda     (sp),y
+	lsr     a
+	lsr     a
+	lsr     a
+	lsr     a
+	lsr     a
+	lsr     a
+	lsr     a
+	ora     ptr1
+	jsr     pusha0
+	ldy     #$03
+	lda     (sp),y
+	jsr     pusha0
+	lda     #$55
+	jsr     tosumula0
+	clc
+	adc     #$21
+	jsr     tosxora0
+	ldy     #$00
+	sta     (sp),y
+;
+; t ^= t >> 3;
+;
+	lsr     a
+	lsr     a
+	lsr     a
 	eor     (sp),y
+	sta     (sp),y
+;
+; t ^= t >> 6;
+;
+	lsr     a
+	lsr     a
+	lsr     a
+	lsr     a
+	lsr     a
+	lsr     a
+	eor     (sp),y
+	sta     (sp),y
+;
+; return t & 0x3F;
+;
 	and     #$3F
 	ldx     #$00
 ;
 ; }
 ;
-	jmp     incsp3
+	jmp     incsp4
 
 .endproc
 
@@ -415,31 +470,31 @@ L005F:	jmp     incsp5
 ;
 ; }
 ;
-	beq     L019A
+	beq     L01B7
 	cmp     #$01
-	beq     L019B
+	beq     L01B8
 	cmp     #$02
-	beq     L019C
-	jmp     L019D
+	beq     L01B9
+	jmp     L01BA
 ;
 ; case 0: return local_x;
 ;
-L019A:	lda     _local_x
+L01B7:	lda     _local_x
 	jmp     incsp1
 ;
 ; case 1: return local_y;
 ;
-L019B:	lda     _local_y
+L01B8:	lda     _local_y
 	jmp     incsp1
 ;
 ; case 2: return remote_x;
 ;
-L019C:	lda     _remote_x
+L01B9:	lda     _remote_x
 	jmp     incsp1
 ;
 ; default: return remote_y;
 ;
-L019D:	lda     _remote_y
+L01BA:	lda     _remote_y
 ;
 ; }
 ;
@@ -469,37 +524,37 @@ L019D:	lda     _remote_y
 ;
 ; }
 ;
-	beq     L007E
+	beq     L008C
 	cmp     #$01
-	beq     L0082
+	beq     L0090
 	cmp     #$02
-	beq     L0086
-	jmp     L0089
+	beq     L0094
+	jmp     L0097
 ;
 ; case 0: remote_x = v; break;
 ;
-L007E:	dey
+L008C:	dey
 	lda     (sp),y
 	sta     _remote_x
 	jmp     incsp2
 ;
 ; case 1: remote_y = v; break;
 ;
-L0082:	dey
+L0090:	dey
 	lda     (sp),y
 	sta     _remote_y
 	jmp     incsp2
 ;
 ; case 2: local_x = v; break;
 ;
-L0086:	dey
+L0094:	dey
 	lda     (sp),y
 	sta     _local_x
 	jmp     incsp2
 ;
 ; default: local_y = v; break;
 ;
-L0089:	dey
+L0097:	dey
 	lda     (sp),y
 	sta     _local_y
 ;
@@ -524,6 +579,14 @@ L0089:	dey
 ;
 	jsr     pusha
 ;
+; ppu_wait_nmi();
+;
+	jsr     _ppu_wait_nmi
+;
+; link_nmi_off();
+;
+	jsr     _link_nmi_off
+;
 ; rx0 = link_receive(timeout);
 ;
 	ldy     #$00
@@ -535,7 +598,7 @@ L0089:	dey
 ; if (rx0 <= 255) {
 ;
 	cpx     #$01
-	bcs     L0098
+	bcs     L00A8
 ;
 ; rx1 = link_receive(1);
 ;
@@ -555,22 +618,36 @@ L0089:	dey
 ;
 	ldx     _rx1+1
 	cpx     #$01
-	bcs     L0098
+	bcs     L00A8
 	ldx     _rx2+1
 	cpx     #$01
-	bcs     L0098
+	bcs     L00A8
 ;
-; (rx2 & 0x3F) == check6((unsigned char)rx0, (unsigned char)rx1))
+; (rx2 & 0x3F) == check6((unsigned char)rx0, (unsigned char)rx1,
 ;
 	lda     _rx2
 	and     #$3F
 	jsr     pusha0
+	jsr     decsp2
 	lda     _rx0
-	jsr     pusha
+	ldy     #$01
+	sta     (sp),y
 	lda     _rx1
+	dey
+	sta     (sp),y
+;
+; (unsigned char)rx2 >> 6))
+;
+	lda     _rx2
+	lsr     a
+	lsr     a
+	lsr     a
+	lsr     a
+	lsr     a
+	lsr     a
 	jsr     _check6
 	jsr     tosicmp
-	bne     L0098
+	bne     L00A8
 ;
 ; return 1;
 ;
@@ -580,7 +657,7 @@ L0089:	dey
 ;
 ; link_nmi_on();
 ;
-L0098:	jsr     _link_nmi_on
+L00A8:	jsr     _link_nmi_on
 ;
 ; return 0;
 ;
@@ -618,13 +695,13 @@ L0098:	jsr     _link_nmi_on
 ; return v < 10 ? '0' + v : 'A' - 10 + v;
 ;
 	cmp     #$0A
-	bcs     L019F
+	bcs     L01BC
 	ldx     #$00
 	lda     (sp),y
 	clc
 	adc     #$30
 	jmp     incsp1
-L019F:	lda     (sp),y
+L01BC:	lda     (sp),y
 	clc
 	adc     #$37
 	ldx     #$00
@@ -716,7 +793,7 @@ L019F:	lda     (sp),y
 ; if (is_master)
 ;
 	lda     _is_master
-	beq     L00D5
+	beq     L00E6
 ;
 ; vram_write(master_text, sizeof(master_text) - 1);
 ;
@@ -725,13 +802,13 @@ L019F:	lda     (sp),y
 ;
 ; else
 ;
-	jmp     L01A4
+	jmp     L01C1
 ;
 ; vram_write(slave_text, sizeof(slave_text) - 1);
 ;
-L00D5:	lda     #<(_slave_text)
+L00E6:	lda     #<(_slave_text)
 	ldx     #>(_slave_text)
-L01A4:	jsr     pushax
+L01C1:	jsr     pushax
 	ldx     #$00
 	lda     #$16
 	jsr     _vram_write
@@ -816,8 +893,8 @@ L01A4:	jsr     pushax
 ;
 ; if (!decided) {
 ;
-L0102:	lda     _decided
-	bne     L011D
+L0113:	lda     _decided
+	bne     L012E
 ;
 ; pad = pad_poll(0);
 ;
@@ -832,7 +909,7 @@ L0102:	lda     _decided
 ;
 	lda     _pad
 	and     #$10
-	beq     L010C
+	beq     L011D
 ;
 ; is_master = 1;
 ;
@@ -849,11 +926,11 @@ L0102:	lda     _decided
 ;
 ; } else if (slave_receive(8)) {
 ;
-	jmp     L011D
-L010C:	lda     #$08
+	jmp     L012E
+L011D:	lda     #$08
 	jsr     _slave_receive
 	tax
-	beq     L0102
+	beq     L0113
 ;
 ; is_master = 0;
 ;
@@ -871,20 +948,41 @@ L010C:	lda     #$08
 ;
 ; if (is_master) {
 ;
-L011D:	lda     _is_master
-	beq     L011E
+L012E:	lda     _is_master
+	jeq     L012F
 ;
 ; ppu_wait_nmi();
 ;
+	jsr     decsp2
 	jsr     _ppu_wait_nmi
 ;
 ; link_nmi_off();
 ;
 	jsr     _link_nmi_off
 ;
+; for (d = 0; d < 120; ++d)
+;
+	ldy     #$00
+	tya
+	sta     (sp),y
+	iny
+	sta     (sp),y
+L0133:	ldy     #$01
+	lda     (sp),y
+	cmp     #$00
+	bne     L013A
+	dey
+	lda     (sp),y
+	cmp     #$78
+L013A:	bcs     L0134
+	ldx     #$00
+	lda     #$01
+	jsr     addeq0sp
+	jmp     L0133
+;
 ; sync_idx = frame & 3;
 ;
-	lda     _frame
+L0134:	lda     _frame
 	and     #$03
 	sta     _sync_idx
 ;
@@ -893,16 +991,21 @@ L011D:	lda     _is_master
 	jsr     _sync_get
 	sta     _sync_val
 ;
-; sync_tag = (sync_idx << 6) | check6(pad, sync_val);
+; sync_tag = (sync_idx << 6) | check6(pad, sync_val, sync_idx);
 ;
 	ldx     #$00
 	lda     _sync_idx
 	jsr     aslax4
 	jsr     aslax2
 	jsr     pushax
+	jsr     decsp2
 	lda     _pad
-	jsr     pusha
+	ldy     #$01
+	sta     (sp),y
 	lda     _sync_val
+	dey
+	sta     (sp),y
+	lda     _sync_idx
 	jsr     _check6
 	jsr     tosorax
 	sta     _sync_tag
@@ -937,7 +1040,7 @@ L011D:	lda     _is_master
 ;
 	ldx     _rx0+1
 	cpx     #$01
-	bcs     L0136
+	bcs     L0151
 ;
 ; remote_pad = (unsigned char)rx0;
 ;
@@ -951,7 +1054,7 @@ L011D:	lda     _is_master
 ;
 ; ++frame;
 ;
-L0136:	inc     _frame
+L0151:	inc     _frame
 ;
 ; received_pad = remote_pad;
 ;
@@ -970,17 +1073,18 @@ L0136:	inc     _frame
 ;
 ; } else {
 ;
-	jmp     L0143
+	jsr     incsp2
+	jmp     L015E
 ;
 ; if (!have_packet && !slave_receive(8))
 ;
-L011E:	lda     _have_packet
-	bne     L0146
+L012F:	lda     _have_packet
+	bne     L0161
 	lda     #$08
 	jsr     _slave_receive
 	tax
-	jeq     L0102
-L0146:	lda     #$00
+	jeq     L0113
+L0161:	lda     #$00
 ;
 ; have_packet = 0;
 ;
@@ -1016,8 +1120,8 @@ L0146:	lda     #$00
 ;
 ; if (linked) {
 ;
-L0143:	lda     _linked
-	beq     L0154
+L015E:	lda     _linked
+	beq     L016F
 ;
 ; move_dot(&local_x, &local_y, pad);
 ;
@@ -1057,8 +1161,8 @@ L0143:	lda     _linked
 ;
 ; if (is_master)
 ;
-L0154:	lda     _is_master
-	beq     L015E
+L016F:	lda     _is_master
+	beq     L0179
 ;
 ; show_pads(pad, received_pad);
 ;
@@ -1068,14 +1172,14 @@ L0154:	lda     _is_master
 ;
 ; else
 ;
-	jmp     L01A5
+	jmp     L01C2
 ;
 ; show_pads(received_pad, pad);
 ;
-L015E:	lda     _received_pad
+L0179:	lda     _received_pad
 	jsr     pusha
 	lda     _pad
-L01A5:	jsr     _show_pads
+L01C2:	jsr     _show_pads
 ;
 ; oam_clear();
 ;
@@ -1084,7 +1188,7 @@ L01A5:	jsr     _show_pads
 ; if (is_master) {
 ;
 	lda     _is_master
-	beq     L0168
+	beq     L0183
 ;
 ; oam_meta_spr(local_x, local_y, YellowSpr);
 ;
@@ -1119,11 +1223,11 @@ L01A5:	jsr     _show_pads
 ;
 ; } else {
 ;
-	jmp     L0102
+	jmp     L0113
 ;
 ; oam_meta_spr(remote_x, remote_y, YellowSpr);
 ;
-L0168:	jsr     decsp2
+L0183:	jsr     decsp2
 	lda     _remote_x
 	ldy     #$01
 	sta     (sp),y
@@ -1168,7 +1272,7 @@ L0168:	jsr     decsp2
 ; if (!drawn_role) {
 ;
 	lda     _drawn_role
-	jne     L0102
+	jne     L0113
 ;
 ; drawn_role = 1;
 ;
@@ -1181,7 +1285,7 @@ L0168:	jsr     decsp2
 ;
 ; while (1) {
 ;
-	jmp     L0102
+	jmp     L0113
 
 .endproc
 

@@ -143,7 +143,8 @@ _link_receive:
 	jmp @receive_error      ; nothing arrived: timeout
 
 @start_found:
-	lda #0
+	lda <PPU_CTRL_VAR
+	and #$7F
 	sta PPU_CTRL            ; a packet is coming: NMI off until link_nmi_on()
 
 	; Time zero = the read that saw the start bit. The edge itself happened
@@ -206,12 +207,13 @@ _link_idle:
 	rts
 
 ; void link_nmi_off(void) / void link_nmi_on(void)
-; Disable NMI, or restore it to the value the library keeps in PPU_CTRL_VAR.
+; Disable NMI (other PPU_CTRL bits kept), or restore it to the value the library keeps in PPU_CTRL_VAR.
 ; The master calls link_nmi_off() before a transaction; both sides call
 ; link_nmi_on() after it.
 _link_nmi_off:
-	lda #0
-	sta PPU_CTRL
+	lda <PPU_CTRL_VAR
+	and #$7F                ; clear only the NMI bit; sprite/BG table bits must
+	sta PPU_CTRL            ; stay as-is or sprites vanish for the rest of the frame
 	rts
 
 _link_nmi_on:
